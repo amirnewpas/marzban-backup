@@ -1,8 +1,18 @@
 #!/bin/bash
 
-BACKUP_SCRIPT_PATH="/root/backup_marzban.sh"
+BACKUP_SCRIPT_PATH="/root/backup.sh"
+CRON_MARKER="# marzban_backup_cron_job"
 
-# تابع نمایش پیشرفت به صورت نوار درصد
+# ذخیره اسکریپت در مسیر /root/backup.sh اگر از curl اجرا شده
+if [[ "$(basename "$0")" != "backup.sh" ]]; then
+    echo "Saving script to $BACKUP_SCRIPT_PATH ..."
+    curl -Ls https://github.com/amirnewpas/marzban-backup/raw/main/backup.sh -o "$BACKUP_SCRIPT_PATH"
+    chmod +x "$BACKUP_SCRIPT_PATH"
+    echo "Script saved. Now you can run it directly: $BACKUP_SCRIPT_PATH"
+    exit 0
+fi
+
+# نمایش نوار پیشرفت درصدی
 function show_progress() {
     current=$1
     total=$2
@@ -19,39 +29,32 @@ function show_progress() {
     echo -ne "\r$progress_bar"
 }
 
-function remove_bot() {
-    echo "Removing Telegram bot configuration and cron jobs..."
-    rm -f /root/.telegram_bot_token /root/.telegram_chat_id
-    # Remove cron jobs containing this script path
-    crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT_PATH" | crontab -
-    echo "Removing backup script file..."
-    rm -f "$BACKUP_SCRIPT_PATH"
-    echo "Bot removed successfully."
-    exit 0
+# حذف کرون جاب‌های مربوط به خود اسکریپت (پاک کردن فقط کرون‌های خودش)
+function remove_own_cron_jobs() {
+    echo "Removing backup cron jobs ..."
+    crontab -l 2>/dev/null | grep -v "$CRON_MARKER" | crontab -
 }
 
+# افزودن یا تغییر کرون جاب ساعت به ساعت دقیق روی دقیقه صفر با فاصله INTERVAL ساعت
 function change_cron_only() {
-    echo "Enter backup interval in hours (1-24):"; read -r INTERVAL
-    [[ "$INTERVAL" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || { echo "Invalid interval."; return 1; }
+    echo "Enter backup interval in hours (1-24):"
+    read -r INTERVAL
+    if [[ ! "$INTERVAL" =~ ^([1-9]|1[0-9]|2[0-4])$ ]]; then
+        echo "Invalid interval. Please enter a number between 1 and 24."
+        return 1
+    fi
+
+    remove_own_cron_jobs
 
     CRON_EXPR="0 */$INTERVAL * * *"
-    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup_marzban.log 2>&1"
+    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup.log 2>&1 $CRON_MARKER"
 
-    (crontab -l 2>/dev/null | grep -v -F "$BACKUP_SCRIPT_PATH"; echo "$CRON_EXPR $CRON_CMD") | crontab -
+    (crontab -l 2>/dev/null; echo "$CRON_EXPR $CRON_CMD") | crontab -
 
-    echo "✅ You set cron job for every $INTERVAL hour(s)"
+    echo "✅ Cron job set to run every $INTERVAL hour(s) at minute 0."
 }
 
-function setup_cron() {
-    echo "Enter the Telegram Bot Token:"; read -r TELEGRAM_BOT_TOKEN
-    echo "Enter the Telegram Chat ID:"; read -r TELEGRAM_CHAT_ID
-
-    echo "$TELEGRAM_BOT_TOKEN" > /root/.telegram_bot_token
-    echo "$TELEGRAM_CHAT_ID" > /root/.telegram_chat_id
-
-    change_cron_only
-}
-
+# استخراج پسورد از فایل env
 function extract_password() {
     ENV_FILE="/opt/marzban/.env"
     PASS_FILE="/root/.marzban_mysql_password"
@@ -63,12 +66,12 @@ function extract_password() {
     fi
 }
 
+# اجرای بکاپ و ارسال به تلگرام
 function backup_and_send() {
-    BASE_DIR="/root/backup_marzban"
+    BASE_DIR="/root/backup"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VAR_DIR="$BASE_DIR/var"
-    VARLIB_DIR="$VAR_DIR/lib/marzban"
+    VAR_DIR="$BASE_DIR/var/lib/marzban"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -78,7 +81,7 @@ function backup_and_send() {
     TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
     TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
 
-    mkdir -p "$DB_DIR" "$OPT_DIR" "$VARLIB_DIR"
+    mkdir -p "$DB_DIR" "$OPT_DIR" "$VAR_DIR"
 
     TOTAL_STEPS=7
     CURRENT_STEP=0
@@ -106,10 +109,10 @@ function backup_and_send() {
 
     VARLIB_SOURCE="/var/lib/marzban"
     if [[ -d "$VARLIB_SOURCE" ]]; then
-        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VARLIB_DIR/"
-        tar -czf "$VARLIB_DIR/varlib_backup.tar.gz" -C "$VARLIB_DIR" .
-        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
-        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
+        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VAR_DIR/"
+        tar -czf "$VAR_DIR/varlib_backup.tar.gz" -C "$VAR_DIR" .
+        find "$VAR_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
+        find "$VAR_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
@@ -149,6 +152,7 @@ function run_backup() {
     backup_and_send
 }
 
+# منوی تنظیمات
 function settings_menu() {
     clear
     echo "=== Settings ==="
@@ -173,6 +177,7 @@ function settings_menu() {
     read -rp "Press enter to continue..."
 }
 
+# منوی اصلی
 function show_menu() {
     clear
     echo "=============================="
@@ -184,18 +189,18 @@ function show_menu() {
     fi
     echo "Last backup: $LAST_BACKUP"
     echo "=============================="
-    echo "1) Install"
-    echo "2) Send back up to telegram know"
+    echo "1) Install / Setup"
+    echo "2) Run Backup Now"
     echo "3) Settings"
-    echo "4) Remove bot and clean up"
+    echo "4) Remove backup and cleanup"
     echo "5) Exit"
     echo "=============================="
     read -rp "Choose an option: " option
     case $option in
-        1) setup_cron ;;
+        1) change_cron_only ;;
         2) run_backup ;;
         3) settings_menu ;;
-        4) remove_bot ;;
+        4) remove_own_cron_jobs; rm -f /root/.telegram_bot_token /root/.telegram_chat_id "$BACKUP_SCRIPT_PATH" /root/.marzban_mysql_password; echo "Cleanup done."; exit 0 ;;
         5) exit 0 ;;
         *) echo "Invalid option." ;;
     esac
