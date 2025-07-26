@@ -201,4 +201,14 @@ function show_menu() {
         5) exit 0 ;;
         *) echo "Invalid option." ;;
     esac
-    read -rp
+    read -rp "Press enter to continue..."
+}
+
+if [[ "$1" == "--run" ]]; then
+    run_backup
+else
+    while true; do
+        show_menu
+    done
+fi
+
