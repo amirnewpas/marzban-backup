@@ -20,11 +20,14 @@
 برای دانلود، آماده‌سازی و اجرای اسکریپت کافیست دستور زیر را در ترمینال سرور وارد کنید:
 
 ## ارتباط با من و گزارش خطا 
-https://t.me/Programing_psy
+telegram: https://t.me/Programing_psy
+
+
+
+
+
+
+
 
 ```bash
 curl -Ls https://github.com/amirnewpas/marzban-backup/raw/main/backup.sh -o /root/backup.sh && chmod +x /root/backup.sh && /root/backup.sh
-
-
-
-
