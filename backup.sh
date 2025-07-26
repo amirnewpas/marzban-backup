@@ -16,9 +16,9 @@ VARLIB_SOURCE="/var/lib/marzban"
 
 function get_persian_date() {
     if command -v python3 &> /dev/null; then
-        python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%-d/%-m/%Y %H:%M:%S'))" 2>/dev/null || echo "Persian date unavailable"
+        python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))"
     else
-        echo "Persian date unavailable"
+        echo "تاریخ شمسی در دسترس نیست"
     fi
 }
 
@@ -81,18 +81,16 @@ function backup_and_send() {
 
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
 
-    # Prepare Persian and Gregorian date only for caption
     PERSIAN_DATE=$(get_persian_date)
     GREGORIAN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 
-CAPTION="فایل پشتیبان‌گیری ساخته شد
+    CAPTION="فایل پشتیبان‌گیری ساخته شد
 📅 تاریخ میلادی: $GREGORIAN_DATE
 📅 تاریخ شمسی: $PERSIAN_DATE
 
 🔗 GitHub: https://github.com/amirnewpas/marzban-backup
 🔗 Telegram: https://t.me/Programing_psy
 "
-
 
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
       -F document=@"$BASE_DIR/$FINAL_ARCHIVE" \
@@ -194,5 +192,4 @@ function show_menu() {
 EOF
 
 chmod +x "$BACKUP_SCRIPT_PATH"
-
 bash "$BACKUP_SCRIPT_PATH"
