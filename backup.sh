@@ -8,7 +8,6 @@ cat <<'EOF' > "$BACKUP_SCRIPT_PATH"
 function remove_bot() {
     echo "Removing Telegram bot configuration and cron jobs..."
     rm -f /root/.telegram_bot_token /root/.telegram_chat_id
-    # Remove cron jobs containing this script path
     crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT_PATH" | crontab -
     echo "Removing backup script file..."
     rm -f "$BACKUP_SCRIPT_PATH"
@@ -50,6 +49,7 @@ function extract_password() {
 }
 
 function backup_and_send() {
+    echo "🔄 Starting backup process..."
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
@@ -57,24 +57,28 @@ function backup_and_send() {
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
-    [[ -n "$MYSQL_ROOT_PASSWORD" ]] || { echo "Password file is empty."; exit 1; }
-    [[ -f /root/.telegram_bot_token && -f /root/.telegram_chat_id ]] || { echo "Bot token or Chat ID not set"; exit 1; }
+    [[ -n "$MYSQL_ROOT_PASSWORD" ]] || { echo "❌ Password file is empty."; exit 1; }
+    [[ -f /root/.telegram_bot_token && -f /root/.telegram_chat_id ]] || { echo "❌ Bot token or Chat ID not set"; exit 1; }
 
     TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
     TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
 
     mkdir -p "$DB_DIR" "$OPT_DIR" "$VARLIB_DIR"
 
+    echo "[20%] 📦 Dumping MySQL databases..."
     docker exec -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$CONTAINER_NAME" mysqldump --no-defaults -u root marzban > "$DB_DIR/marzban.sql"
     docker exec -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$CONTAINER_NAME" mysqldump --no-defaults -u root marzhelp > "$DB_DIR/marzhelp.sql"
 
+    echo "[35%] 📁 Compressing database backups..."
     tar -czf "$DB_DIR/db_backup.tar.gz" -C "$DB_DIR" marzban.sql marzhelp.sql
     rm -f "$DB_DIR/marzban.sql" "$DB_DIR/marzhelp.sql"
 
+    echo "[50%] 🛠 Backing up /opt/marzban configuration..."
     if [[ -f "/opt/marzban/.env" && -f "/opt/marzban/docker-compose.yml" ]]; then
         tar -czf "$OPT_DIR/marzban_opt_backup.tar.gz" -C /opt/marzban .env docker-compose.yml
     fi
 
+    echo "[65%] 📂 Syncing /var/lib/marzban data..."
     VARLIB_SOURCE="/var/lib/marzban"
     if [[ -d "$VARLIB_SOURCE" ]]; then
         rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VARLIB_DIR/"
@@ -83,6 +87,7 @@ function backup_and_send() {
         find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     fi
 
+    echo "[80%] 📦 Creating final archive..."
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
@@ -90,23 +95,24 @@ function backup_and_send() {
 
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
 
-    CAPTION="Backup file created successfully
-📅 Gregorian date: $(date +'%Y-%m-%d %H:%M:%S')
+    CAPTION="✅ Backup file created successfully
+📅 Date: $(date +'%Y-%m-%d %H:%M:%S')
 
 🔗 GitHub: https://github.com/amirnewpas/marzban-backup
-🔗 Telegram: https://t.me/Programing_psy
+🔗 Telegram: @Programing_psy
 "
 
+    echo "[95%] 🚀 Sending backup to Telegram..."
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
       -F document=@"$BASE_DIR/$FINAL_ARCHIVE" \
       -F caption="$CAPTION" \
       "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument")
 
     if echo "$response" | grep -q "\"ok\":true"; then
-        echo "Backup sent successfully."
+        echo "[100%] ✅ Backup sent successfully."
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
     else
-        echo "Failed to send backup to Telegram."
+        echo "❌ Failed to send backup to Telegram."
         echo "Response: $response"
     fi
 }
@@ -174,7 +180,6 @@ if [[ "$1" == "--run" ]]; then
 else
     while true; do show_menu; done
 fi
-
 EOF
 
 chmod +x "$BACKUP_SCRIPT_PATH"
