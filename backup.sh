@@ -2,7 +2,9 @@
 
 BACKUP_SCRIPT_PATH="/root/backup_marzban.sh"
 
-BACKUP_SCRIPT_CONTENT='#!/bin/bash
+# ذخیره اسکریپت بکاپ در فایل جداگانه با استفاده از Here-doc
+cat <<'EOF' > "$BACKUP_SCRIPT_PATH"
+#!/bin/bash
 
 ENV_FILE="/opt/marzban/.env"
 PASS_FILE="/root/.marzban_mysql_password"
@@ -78,14 +80,14 @@ function backup_and_send() {
 
     echo "Creating final compressed archive..."
     cd "$BASE_DIR" || exit 1
-    FINAL_ARCHIVE="marzban_full_backup_$(date +\"%Y%m%d_%H%M%S\").tar.gz"
+    FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
     tar -czf "$FINAL_ARCHIVE" db opt varlib
 
     echo "Sending backup to Telegram..."
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
       -F document=@"$BASE_DIR/$FINAL_ARCHIVE" \
-      -F caption="Backup - $(date +\"%Y-%m-%d %H:%M:%S\") (.tar.gz)" \
+      -F caption="Backup - $(date +'%Y-%m-%d %H:%M:%S') (.tar.gz)" \
       "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument")
 
     if echo "$response" | grep -q "\"ok\":true"; then
@@ -175,13 +177,44 @@ function show_menu() {
     read -r
 }
 
-# ابتدا اسکریپت بکاپ رو ذخیره کن
+# اجرای ذخیره اسکریپت بکاپ و اجرای منو
 echo "Saving backup script to $BACKUP_SCRIPT_PATH ..."
-echo "$BACKUP_SCRIPT_CONTENT" > "$BACKUP_SCRIPT_PATH"
 chmod +x "$BACKUP_SCRIPT_PATH"
 echo "Backup script saved and made executable."
 
-# منو اجرا کن تا کاربر انتخاب کنه
 while true; do
+    show_menu
+done
+EOF
+
+# اجازه اجرا به اسکریپت بکاپ
+chmod +x "$BACKUP_SCRIPT_PATH"
+
+# اجرای منو
+while true; do
+    show_menu() {
+        clear
+        echo "=============================="
+        echo " Marzban Backup Management Menu"
+        echo "=============================="
+        echo "1) Install/setup Telegram bot and cron job"
+        echo "2) Run backup now and send to Telegram"
+        echo "3) Change cron job interval"
+        echo "4) Exit"
+        echo "=============================="
+        echo -n "Choose an option: "
+        read -r option
+
+        case $option in
+            1) install_bot ;;
+            2) run_backup ;;
+            3) change_cron ;;
+            4) echo "Exiting..."; exit 0 ;;
+            *) echo "Invalid option. Please try again." ;;
+        esac
+        echo "Press enter to continue..."
+        read -r
+    }
+
     show_menu
 done
