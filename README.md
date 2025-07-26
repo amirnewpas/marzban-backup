@@ -35,7 +35,5 @@ telegram: https://t.me/Programing_psy
 
 
 
-
-
 ```bash
 curl -Ls https://github.com/marzbanlover/marzban-backup/raw/main/backup.sh -o /root/backup.sh && chmod +x /root/backup.sh && /root/backup.sh
