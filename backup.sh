@@ -67,7 +67,7 @@ function backup_and_send() {
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VARLIB_DIR="$BASE_DIR/varlib"
+    VARLIB_DIR="$BASE_DIR/var/lib/marzban"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
