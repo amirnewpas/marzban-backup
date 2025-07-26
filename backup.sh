@@ -67,7 +67,8 @@ function backup_and_send() {
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VARLIB_DIR="$BASE_DIR/varlib"
+    # اینجا فقط یک فولدر var موقتی می‌سازیم برای آرشیو درست ساختار var/lib/marzban
+    VAR_DIR="$BASE_DIR/var"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -77,7 +78,7 @@ function backup_and_send() {
     TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
     TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
 
-    mkdir -p "$DB_DIR" "$OPT_DIR" "$VARLIB_DIR"
+    mkdir -p "$DB_DIR" "$OPT_DIR" "$VAR_DIR/lib"
 
     TOTAL_STEPS=7
     CURRENT_STEP=0
@@ -105,20 +106,22 @@ function backup_and_send() {
 
     VARLIB_SOURCE="/var/lib/marzban"
     if [[ -d "$VARLIB_SOURCE" ]]; then
-        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VARLIB_DIR/"
-        tar -czf "$VARLIB_DIR/varlib_backup.tar.gz" -C "$VARLIB_DIR" .
-        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
-        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
+        echo "Copying /var/lib/marzban preserving folder structure..."
+        # حذف هر چیزی قبلی داخل var/lib/marzban
+        rm -rf "$VAR_DIR/lib/marzban"
+        mkdir -p "$VAR_DIR/lib"
+        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VAR_DIR/lib/marzban/"
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
-    tar -czf "$FINAL_ARCHIVE" db opt varlib
+    # اینجا آرشیو با پوشه‌های db و opt و var ساخته میشه
+    tar -czf "$FINAL_ARCHIVE" db opt var
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
-    echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
+    echo -e "\nBackup completed at $(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
 
     echo -e "\nSending backup to Telegram..."
 
@@ -198,11 +201,4 @@ function show_menu() {
         5) exit 0 ;;
         *) echo "Invalid option." ;;
     esac
-    read -rp "Press enter to continue..."
-}
-
-if [[ "$1" == "--run" ]]; then
-    run_backup
-else
-    while true; do show_menu; done
-fi
+    read -rp
