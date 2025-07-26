@@ -69,6 +69,9 @@ function setup_cron() {
     echo "$TELEGRAM_CHAT_ID" > /root/.telegram_chat_id
 
     change_cron_only
+
+    # گرفتن بکاپ بلافاصله پس از نصب و تنظیم
+    run_backup
 }
 
 # استخراج پسورد از فایل env
