@@ -22,6 +22,7 @@ function show_progress() {
 function remove_bot() {
     echo "Removing Telegram bot configuration and cron jobs..."
     rm -f /root/.telegram_bot_token /root/.telegram_chat_id
+    # Remove cron jobs containing this script path
     crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT_PATH" | crontab -
     echo "Removing backup script file..."
     rm -f "$BACKUP_SCRIPT_PATH"
@@ -66,7 +67,7 @@ function backup_and_send() {
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VARLIB_DIR="/var/lib/marzban"
+    VARLIB_DIR="$BASE_DIR/varlib"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -76,7 +77,7 @@ function backup_and_send() {
     TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
     TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
 
-    mkdir -p "$DB_DIR" "$OPT_DIR"
+    mkdir -p "$DB_DIR" "$OPT_DIR" "$VARLIB_DIR"
 
     TOTAL_STEPS=7
     CURRENT_STEP=0
@@ -102,13 +103,12 @@ function backup_and_send() {
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
-    if [[ -d "$VARLIB_DIR" ]]; then
-        TMP_VARLIB_DIR="$BASE_DIR/varlib"
-        mkdir -p "$TMP_VARLIB_DIR"
-        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_DIR/" "$TMP_VARLIB_DIR/"
-        tar -czf "$TMP_VARLIB_DIR/varlib_backup.tar.gz" -C "$TMP_VARLIB_DIR" .
-        find "$TMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
-        find "$TMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
+    VARLIB_SOURCE="/var/lib/marzban"
+    if [[ -d "$VARLIB_SOURCE" ]]; then
+        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VARLIB_DIR/"
+        tar -czf "$VARLIB_DIR/varlib_backup.tar.gz" -C "$VARLIB_DIR" .
+        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
+        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
