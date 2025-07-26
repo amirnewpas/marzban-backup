@@ -13,7 +13,18 @@ OPT_DIR="$BASE_DIR/opt"
 VARLIB_DIR="$BASE_DIR/varlib"
 CONTAINER_NAME="marzban-mysql-1"
 VARLIB_SOURCE="/var/lib/marzban"
-LAST_BACKUP_FILE="/root/.marzban_last_backup"
+
+# Function to get persian date
+function get_persian_date() {
+    # Requires 'jdate' or 'datefarsi' command or uses python if available
+    if command -v jdate &> /dev/null; then
+        jdate +"%Y/%m/%d %H:%M:%S"
+    elif command -v python3 &> /dev/null; then
+        python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))"
+    else
+        echo "Persian date unavailable"
+    fi
+}
 
 function extract_password() {
     if [[ -f "$ENV_FILE" ]]; then
@@ -72,20 +83,51 @@ function backup_and_send() {
     tar -czf "$FINAL_ARCHIVE" db opt varlib
     show_progress 85 "Creating final archive..."; sleep 1
 
+    # Save last backup time
+    echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
+
+    # Prepare message caption with Persian and Gregorian date, GitHub and Telegram links
+    PERSIAN_DATE=$(date +"%Y/%m/%d %H:%M:%S") # fallback in case no Persian date
+    # Try to get Persian date with python if available
+    if command -v python3 &> /dev/null; then
+        PERSIAN_DATE=$(python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))" 2>/dev/null || echo "$(date +"%Y/%m/%d %H:%M:%S")")
+    fi
+
+    GREGORIAN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+
+    CAPTION="Backup File
+📅 Gregorian: $GREGORIAN_DATE
+📅 Persian: $PERSIAN_DATE
+
+🔗 GitHub: https://github.com/yourusername/yourrepo
+🔗 Telegram: https://t.me/Programing_psy
+"
+
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
       -F document=@"$BASE_DIR/$FINAL_ARCHIVE" \
-      -F caption="Backup - $(date +'%Y-%m-%d %H:%M:%S')" \
+      -F caption="$CAPTION" \
       "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument")
 
     if echo "$response" | grep -q "\"ok\":true"; then
         show_progress 100 "✅ Backup sent successfully"
         echo ""
-        echo "$(date +'%Y-%m-%d %H:%M:%S')" > "$LAST_BACKUP_FILE"
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
     else
         echo -e "\n❌ Failed to send to Telegram."
         echo "Response: $response"
     fi
+}
+
+function change_cron_only() {
+    echo "Enter backup interval in hours (1-24):"; read -r INTERVAL
+    [[ "$INTERVAL" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || { echo "Invalid interval."; return 1; }
+
+    CRON_EXPR="0 */$INTERVAL * * *"
+    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup_marzban.log 2>&1"
+
+    (crontab -l 2>/dev/null | grep -v -F "$BACKUP_SCRIPT_PATH"; echo "$CRON_EXPR $CRON_CMD") | crontab -
+
+    echo "✅ You set cron job for every $INTERVAL hour(s)"
 }
 
 function setup_cron() {
@@ -95,13 +137,7 @@ function setup_cron() {
     echo "$TELEGRAM_BOT_TOKEN" > /root/.telegram_bot_token
     echo "$TELEGRAM_CHAT_ID" > /root/.telegram_chat_id
 
-    echo "Enter backup interval in hours (1-24):"; read -r INTERVAL
-    [[ "$INTERVAL" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || { echo "Invalid interval."; exit 1; }
-
-    CRON_EXPR="0 */$INTERVAL * * *"
-    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup_marzban.log 2>&1"
-    (crontab -l 2>/dev/null | grep -v -F "$CRON_CMD" ; echo "$CRON_EXPR $CRON_CMD") | crontab -
-    echo "Cron job installed: every $INTERVAL hour(s)"
+    change_cron_only
 }
 
 function run_backup() {
@@ -113,12 +149,14 @@ function run_backup() {
 }
 
 function settings_menu() {
-    echo ""
+    clear
     echo "=== Settings ==="
     echo "Bot Token: $(cat /root/.telegram_bot_token 2>/dev/null || echo 'Not set')"
     echo "Chat ID: $(cat /root/.telegram_chat_id 2>/dev/null || echo 'Not set')"
-    echo "Cron jobs:"
-    crontab -l | grep "$BACKUP_SCRIPT_PATH" || echo "No cron job found"
+    echo "Cron job:"
+    crontab -l 2>/dev/null | grep "$BACKUP_SCRIPT_PATH" | while read -r line; do
+        echo "-> $line"
+    done || echo "No cron job found"
     echo "------------------"
     echo "1) Change Bot Token"
     echo "2) Change Chat ID"
@@ -126,11 +164,12 @@ function settings_menu() {
     echo "4) Back"
     read -rp "Choose: " input
     case $input in
-        1) echo "Enter new bot token:"; read -r token; echo "$token" > /root/.telegram_bot_token;;
-        2) echo "Enter new chat ID:"; read -r id; echo "$id" > /root/.telegram_chat_id;;
-        3) setup_cron;;
+        1) echo "Enter new bot token:"; read -r token; echo "$token" > /root/.telegram_bot_token ;;
+        2) echo "Enter new chat ID:"; read -r id; echo "$id" > /root/.telegram_chat_id ;;
+        3) change_cron_only ;;
         *) ;;
     esac
+    read -rp "Press enter to continue..."
 }
 
 function show_menu() {
@@ -138,16 +177,16 @@ function show_menu() {
     echo "=============================="
     echo " Marzban Backup Management Menu"
     echo "=============================="
+    LAST_BACKUP="No backup yet"
+    if [[ -f /root/.last_backup_time ]]; then
+        LAST_BACKUP=$(cat /root/.last_backup_time)
+    fi
+    echo "Last backup: $LAST_BACKUP"
+    echo "=============================="
     echo "1) Install/setup Telegram bot and cron job"
     echo "2) Run backup now and send to Telegram"
     echo "3) Settings"
     echo "4) Exit"
-    echo "=============================="
-    if [[ -f "$LAST_BACKUP_FILE" ]]; then
-        echo "Last backup: $(cat $LAST_BACKUP_FILE)"
-    else
-        echo "Last backup: Not available"
-    fi
     echo "=============================="
     read -rp "Choose an option: " option
     case $option in
