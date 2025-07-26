@@ -14,22 +14,20 @@ VARLIB_DIR="$BASE_DIR/varlib"
 CONTAINER_NAME="marzban-mysql-1"
 VARLIB_SOURCE="/var/lib/marzban"
 
-# Check and install persiantools if not present
-function ensure_persiantools_installed() {
+function check_and_install_persiantools() {
     if ! python3 -c "import persiantools" &> /dev/null; then
         echo "Installing persiantools Python package..."
-        pip3 install persiantools
-        if [ $? -ne 0 ]; then
-            echo "Failed to install persiantools package!"
+        if command -v pip3 >/dev/null 2>&1; then
+            pip3 install persiantools
+            if [ $? -ne 0 ]; then
+                echo "Error installing persiantools with pip3."
+                exit 1
+            fi
+        else
+            echo "pip3 command not found! Please install python3-pip first."
             exit 1
         fi
     fi
-}
-
-# Function to get persian date
-function get_persian_date() {
-    ensure_persiantools_installed
-    python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))"
 }
 
 function extract_password() {
@@ -53,6 +51,8 @@ function show_progress() {
 }
 
 function backup_and_send() {
+    check_and_install_persiantools
+
     MYSQL_ROOT_PASSWORD=$(cat "$PASS_FILE" | tr -d "\r\n ")
     [[ -n "$MYSQL_ROOT_PASSWORD" ]] || { echo "Password file is empty."; exit 1; }
     [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]] || { echo "Bot token or Chat ID not set"; exit 1; }
@@ -93,15 +93,15 @@ function backup_and_send() {
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
 
     # Prepare message caption with Persian and Gregorian date, GitHub and Telegram links
-    PERSIAN_DATE=$(get_persian_date)
+    PERSIAN_DATE=$(python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))")
     GREGORIAN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 
     CAPTION="فایل پشتیبان‌گیری ساخته شد
 📅 تاریخ میلادی: $GREGORIAN_DATE
 📅 تاریخ شمسی: $PERSIAN_DATE
 
-🔗 GitHub: https://github.com/amirnewpas/marzban-backup
-🔗 Telegram: https://t.me/Programing_psy
+🔗 گیت‌هاب: https://github.com/amirnewpas/marzban-backup
+🔗 تلگرام: https://t.me/Programing_psy
 "
 
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
@@ -110,11 +110,11 @@ function backup_and_send() {
       "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument")
 
     if echo "$response" | grep -q "\"ok\":true"; then
-        show_progress 100 "✅ Backup sent successfully"
+        show_progress 100 "✅ پشتیبان با موفقیت ارسال شد"
         echo ""
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
     else
-        echo -e "\n❌ Failed to send to Telegram."
+        echo -e "\n❌ ارسال به تلگرام انجام نشد."
         echo "Response: $response"
     fi
 }
