@@ -13,7 +13,7 @@ OPT_DIR="$BASE_DIR/opt"
 VARLIB_DIR="$BASE_DIR/varlib"
 CONTAINER_NAME="marzban-mysql-1"
 VARLIB_SOURCE="/var/lib/marzban"
-LAST_BACKUP_FILE="/root/.last_marzban_backup"
+LAST_BACKUP_FILE="/root/.marzban_last_backup"
 
 function extract_password() {
     if [[ -f "$ENV_FILE" ]]; then
@@ -80,8 +80,8 @@ function backup_and_send() {
     if echo "$response" | grep -q "\"ok\":true"; then
         show_progress 100 "✅ Backup sent successfully"
         echo ""
+        echo "$(date +'%Y-%m-%d %H:%M:%S')" > "$LAST_BACKUP_FILE"
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
-        date +'%Y-%m-%d %H:%M:%S' > "$LAST_BACKUP_FILE"
     else
         echo -e "\n❌ Failed to send to Telegram."
         echo "Response: $response"
@@ -126,9 +126,9 @@ function settings_menu() {
     echo "4) Back"
     read -rp "Choose: " input
     case $input in
-        1) echo "Enter new bot token:"; read -r token; echo "$token" > /root/.telegram_bot_token ;;
-        2) echo "Enter new chat ID:"; read -r id; echo "$id" > /root/.telegram_chat_id ;;
-        3) setup_cron ;;
+        1) echo "Enter new bot token:"; read -r token; echo "$token" > /root/.telegram_bot_token;;
+        2) echo "Enter new chat ID:"; read -r id; echo "$id" > /root/.telegram_chat_id;;
+        3) setup_cron;;
         *) ;;
     esac
 }
@@ -138,16 +138,16 @@ function show_menu() {
     echo "=============================="
     echo " Marzban Backup Management Menu"
     echo "=============================="
-    if [[ -f "$LAST_BACKUP_FILE" ]]; then
-        echo "🕒 Last Backup: $(cat $LAST_BACKUP_FILE)"
-    else
-        echo "🕒 Last Backup: Not available"
-    fi
-    echo "=============================="
     echo "1) Install/setup Telegram bot and cron job"
     echo "2) Run backup now and send to Telegram"
     echo "3) Settings"
     echo "4) Exit"
+    echo "=============================="
+    if [[ -f "$LAST_BACKUP_FILE" ]]; then
+        echo "Last backup: $(cat $LAST_BACKUP_FILE)"
+    else
+        echo "Last backup: Not available"
+    fi
     echo "=============================="
     read -rp "Choose an option: " option
     case $option in
