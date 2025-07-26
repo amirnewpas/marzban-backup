@@ -67,7 +67,8 @@ function backup_and_send() {
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VARLIB_DIR="$BASE_DIR/var/lib/marzban"
+    VAR_DIR="$BASE_DIR/var"
+    VARLIB_DIR="$VAR_DIR/lib/marzban"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -115,7 +116,7 @@ function backup_and_send() {
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
-    tar -czf "$FINAL_ARCHIVE" db opt varlib
+    tar -czf "$FINAL_ARCHIVE" db opt var
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
