@@ -85,13 +85,14 @@ function backup_and_send() {
     PERSIAN_DATE=$(get_persian_date)
     GREGORIAN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 
-    CAPTION="فایل پشتیبان‌گیری ساخته شد
+CAPTION="فایل پشتیبان‌گیری ساخته شد
 📅 تاریخ میلادی: $GREGORIAN_DATE
 📅 تاریخ شمسی: $PERSIAN_DATE
 
-🔗 گیت‌هاب: https://github.com/amirnewpas/marzban-backup
-🔗 تلگرام: https://t.me/Programing_psy
+🔗 GitHub: https://github.com/amirnewpas/marzban-backup
+🔗 Telegram: https://t.me/Programing_psy
 "
+
 
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
       -F document=@"$BASE_DIR/$FINAL_ARCHIVE" \
