@@ -1,5 +1,9 @@
 #!/bin/bash
 
+BACKUP_SCRIPT_PATH="/root/backup_marzban.sh"
+
+BACKUP_SCRIPT_CONTENT='#!/bin/bash
+
 ENV_FILE="/opt/marzban/.env"
 PASS_FILE="/root/.marzban_mysql_password"
 BASE_DIR="/root/backup_marzban"
@@ -11,7 +15,7 @@ VARLIB_SOURCE="/var/lib/marzban"
 
 function extract_password() {
     if [[ -f "$ENV_FILE" ]]; then
-        grep '^MYSQL_ROOT_PASSWORD=' "$ENV_FILE" | head -n1 | cut -d '=' -f2- > "$PASS_FILE"
+        grep "^MYSQL_ROOT_PASSWORD=" "$ENV_FILE" | head -n1 | cut -d "=" -f2- > "$PASS_FILE"
         if [[ $? -eq 0 ]]; then
             echo "Password extracted and saved to $PASS_FILE"
         else
@@ -26,7 +30,7 @@ function extract_password() {
 
 function backup_and_send() {
     if [[ -f "$PASS_FILE" ]]; then
-        MYSQL_ROOT_PASSWORD=$(cat "$PASS_FILE" | tr -d '\r\n ')
+        MYSQL_ROOT_PASSWORD=$(cat "$PASS_FILE" | tr -d "\r\n ")
         if [[ -z "$MYSQL_ROOT_PASSWORD" ]]; then
             echo "Password file is empty."
             exit 1
@@ -64,27 +68,27 @@ function backup_and_send() {
 
     echo "Backing up /var/lib/marzban excluding mysql and xray-core..."
     if [[ -d "$VARLIB_SOURCE" ]]; then
-        rsync -a --exclude='mysql' --exclude='xray-core' "$VARLIB_SOURCE/" "$VARLIB_DIR/"
+        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VARLIB_DIR/"
         tar -czf "$VARLIB_DIR/varlib_backup.tar.gz" -C "$VARLIB_DIR" .
-        find "$VARLIB_DIR" ! -name 'varlib_backup.tar.gz' -type f -delete
-        find "$VARLIB_DIR" ! -name 'varlib_backup.tar.gz' -type d -empty -delete
+        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
+        find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     else
         echo "Directory $VARLIB_SOURCE does not exist!"
     fi
 
     echo "Creating final compressed archive..."
     cd "$BASE_DIR" || exit 1
-    FINAL_ARCHIVE="marzban_full_backup_$(date +"%Y%m%d_%H%M%S").tar.gz"
+    FINAL_ARCHIVE="marzban_full_backup_$(date +\"%Y%m%d_%H%M%S\").tar.gz"
     rm -f marzban_full_backup_*.tar.gz
     tar -czf "$FINAL_ARCHIVE" db opt varlib
 
     echo "Sending backup to Telegram..."
     response=$(curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
       -F document=@"$BASE_DIR/$FINAL_ARCHIVE" \
-      -F caption="Backup - $(date +"%Y-%m-%d %H:%M:%S") (.tar.gz)" \
+      -F caption="Backup - $(date +\"%Y-%m-%d %H:%M:%S\") (.tar.gz)" \
       "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument")
 
-    if echo "$response" | grep -q '"ok":true'; then
+    if echo "$response" | grep -q "\"ok\":true"; then
         echo "Backup sent successfully."
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
     else
@@ -113,7 +117,7 @@ function setup_cron() {
     fi
 
     CRON_EXPR="0 */$INTERVAL * * *"
-    CRON_CMD="/bin/bash $0 --run >> /root/backup_marzban.log 2>&1"
+    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup_marzban.log 2>&1"
 
     (crontab -l 2>/dev/null | grep -v -F "$CRON_CMD" ; echo "$CRON_EXPR $CRON_CMD") | crontab -
 
@@ -121,16 +125,63 @@ function setup_cron() {
     echo "Check logs in /root/backup_marzban.log"
 }
 
-# اجرای اسکریپت
-if [[ "$1" == "--run" ]]; then
-    [[ -f /root/.telegram_bot_token ]] && TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token) || { echo "Telegram Bot Token file not found!"; exit 1; }
-    [[ -f /root/.telegram_chat_id ]] && TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id) || { echo "Telegram Chat ID file not found!"; exit 1; }
+function run_backup() {
+    if [[ -f /root/.telegram_bot_token ]]; then
+        TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
+    else
+        echo "Telegram Bot Token file not found! Please install the bot first."
+        return 1
+    fi
+    if [[ -f /root/.telegram_chat_id ]]; then
+        TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
+    else
+        echo "Telegram Chat ID file not found! Please install the bot first."
+        return 1
+    fi
 
-    extract_password
-    backup_and_send
-else
-    extract_password
+    bash "$BACKUP_SCRIPT_PATH" --run
+}
+
+function change_cron() {
     setup_cron
-    echo "Running backup now..."
-    backup_and_send
-fi
+}
+
+function install_bot() {
+    echo "Installing bot and setting up cron job..."
+    setup_cron
+}
+
+function show_menu() {
+    clear
+    echo "=============================="
+    echo " Marzban Backup Management Menu"
+    echo "=============================="
+    echo "1) Install/setup Telegram bot and cron job"
+    echo "2) Run backup now and send to Telegram"
+    echo "3) Change cron job interval"
+    echo "4) Exit"
+    echo "=============================="
+    echo -n "Choose an option: "
+    read -r option
+
+    case $option in
+        1) install_bot ;;
+        2) run_backup ;;
+        3) change_cron ;;
+        4) echo "Exiting..."; exit 0 ;;
+        *) echo "Invalid option. Please try again." ;;
+    esac
+    echo "Press enter to continue..."
+    read -r
+}
+
+# ابتدا اسکریپت بکاپ رو ذخیره کن
+echo "Saving backup script to $BACKUP_SCRIPT_PATH ..."
+echo "$BACKUP_SCRIPT_CONTENT" > "$BACKUP_SCRIPT_PATH"
+chmod +x "$BACKUP_SCRIPT_PATH"
+echo "Backup script saved and made executable."
+
+# منو اجرا کن تا کاربر انتخاب کنه
+while true; do
+    show_menu
+done
