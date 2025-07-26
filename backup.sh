@@ -67,8 +67,8 @@ function backup_and_send() {
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    # اینجا فقط یک فولدر var موقتی می‌سازیم برای آرشیو درست ساختار var/lib/marzban
-    VAR_DIR="$BASE_DIR/var"
+    VARLIB_BACKUP_DIR="/var/lib/marzban"
+    TEMP_VARLIB_DIR="$BASE_DIR/varlib_temp"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -78,7 +78,7 @@ function backup_and_send() {
     TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
     TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
 
-    mkdir -p "$DB_DIR" "$OPT_DIR" "$VAR_DIR/lib"
+    mkdir -p "$DB_DIR" "$OPT_DIR" "$TEMP_VARLIB_DIR"
 
     TOTAL_STEPS=7
     CURRENT_STEP=0
@@ -104,24 +104,24 @@ function backup_and_send() {
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
-    VARLIB_SOURCE="/var/lib/marzban"
-    if [[ -d "$VARLIB_SOURCE" ]]; then
-        echo "Copying /var/lib/marzban preserving folder structure..."
-        # حذف هر چیزی قبلی داخل var/lib/marzban
-        rm -rf "$VAR_DIR/lib/marzban"
-        mkdir -p "$VAR_DIR/lib"
-        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_SOURCE/" "$VAR_DIR/lib/marzban/"
+    # بکاپ گرفتن از /var/lib/marzban به صورت یک پوشه در TEMP_VARLIB_DIR
+    if [[ -d "$VARLIB_BACKUP_DIR" ]]; then
+        echo "Backing up /var/lib/marzban folder..."
+        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_BACKUP_DIR/" "$TEMP_VARLIB_DIR/"
+        tar -czf "$TEMP_VARLIB_DIR/varlib_backup.tar.gz" -C "$TEMP_VARLIB_DIR" .
+        # پاک کردن فایل‌ها و فولدرهای موقت به جز فایل tar.gz
+        find "$TEMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
+        find "$TEMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
-    # اینجا آرشیو با پوشه‌های db و opt و var ساخته میشه
-    tar -czf "$FINAL_ARCHIVE" db opt var
+    tar -czf "$FINAL_ARCHIVE" db opt varlib_temp
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
-    echo -e "\nBackup completed at $(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
+    echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
 
     echo -e "\nSending backup to Telegram..."
 
@@ -144,6 +144,9 @@ function backup_and_send() {
         echo "Failed to send backup to Telegram."
         echo "Response: $response"
     fi
+
+    # پاک کردن دایرکتوری موقت varlib_temp بعد از ارسال
+    rm -rf "$TEMP_VARLIB_DIR"
 }
 
 function run_backup() {
@@ -211,4 +214,3 @@ else
         show_menu
     done
 fi
-
