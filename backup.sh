@@ -2,7 +2,7 @@
 
 BACKUP_SCRIPT_PATH="/root/backup_marzban.sh"
 
-# تابع show_progress رو اینجا تعریف می‌کنیم (قبل از cat)
+# تابع نمایش پیشرفت به صورت نوار درصد
 function show_progress() {
     current=$1
     total=$2
@@ -10,22 +10,19 @@ function show_progress() {
     percent=$(( current * 100 / total ))
     filled=$(( percent * width / 100 ))
     empty=$(( width - filled ))
+
     progress_bar="["
     for ((i=0; i<filled; i++)); do progress_bar+="#"; done
     for ((i=0; i<empty; i++)); do progress_bar+="."; done
     progress_bar+="] $percent%"
+
     echo -ne "\r$progress_bar"
 }
-
-# حالا بقیه اسکریپت رو داخل فایل می‌ریزیم بدون تابع show_progress
-cat <<'EOF' > "$BACKUP_SCRIPT_PATH"
-#!/bin/bash
-
-BACKUP_SCRIPT_PATH="/root/backup_marzban.sh"
 
 function remove_bot() {
     echo "Removing Telegram bot configuration and cron jobs..."
     rm -f /root/.telegram_bot_token /root/.telegram_chat_id
+    # Remove cron jobs containing this script path
     crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT_PATH" | crontab -
     echo "Removing backup script file..."
     rm -f "$BACKUP_SCRIPT_PATH"
@@ -82,23 +79,29 @@ function backup_and_send() {
 
     mkdir -p "$DB_DIR" "$OPT_DIR" "$VARLIB_DIR"
 
-    TOTAL_STEPS=6
+    TOTAL_STEPS=7
     CURRENT_STEP=0
 
-    show_progress $CURRENT_STEP $TOTAL_STEPS
+    echo "Starting backup..."
+    sleep 1
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
+    echo "Backing up marzban database..."
     docker exec -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$CONTAINER_NAME" mysqldump --no-defaults -u root marzban > "$DB_DIR/marzban.sql"
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
+
+    echo "Backing up marzhelp database..."
     docker exec -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$CONTAINER_NAME" mysqldump --no-defaults -u root marzhelp > "$DB_DIR/marzhelp.sql"
-    CURRENT_STEP=$((CURRENT_STEP + 1)); show_progress $CURRENT_STEP $TOTAL_STEPS; sleep 1
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     tar -czf "$DB_DIR/db_backup.tar.gz" -C "$DB_DIR" marzban.sql marzhelp.sql
     rm -f "$DB_DIR/marzban.sql" "$DB_DIR/marzhelp.sql"
-    CURRENT_STEP=$((CURRENT_STEP + 1)); show_progress $CURRENT_STEP $TOTAL_STEPS; sleep 1
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     if [[ -f "/opt/marzban/.env" && -f "/opt/marzban/docker-compose.yml" ]]; then
         tar -czf "$OPT_DIR/marzban_opt_backup.tar.gz" -C /opt/marzban .env docker-compose.yml
     fi
-    CURRENT_STEP=$((CURRENT_STEP + 1)); show_progress $CURRENT_STEP $TOTAL_STEPS; sleep 1
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     VARLIB_SOURCE="/var/lib/marzban"
     if [[ -d "$VARLIB_SOURCE" ]]; then
@@ -107,15 +110,17 @@ function backup_and_send() {
         find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
         find "$VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     fi
-    CURRENT_STEP=$((CURRENT_STEP + 1)); show_progress $CURRENT_STEP $TOTAL_STEPS; sleep 1
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
     tar -czf "$FINAL_ARCHIVE" db opt varlib
-    CURRENT_STEP=$((CURRENT_STEP + 1)); show_progress $CURRENT_STEP $TOTAL_STEPS; sleep 1
+    CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
+
+    echo -e "\nSending backup to Telegram..."
 
     CAPTION="Backup file created successfully
 📅 date: $(date +'%Y-%m-%d %H:%M:%S')
@@ -129,13 +134,11 @@ function backup_and_send() {
       -F caption="$CAPTION" \
       "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument")
 
-    CURRENT_STEP=$((CURRENT_STEP + 1)); show_progress $CURRENT_STEP $TOTAL_STEPS; echo ""
-
     if echo "$response" | grep -q "\"ok\":true"; then
-        echo "✅ Backup sent successfully."
+        echo "Backup sent successfully."
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
     else
-        echo "❌ Failed to send backup to Telegram."
+        echo "Failed to send backup to Telegram."
         echo "Response: $response"
     fi
 }
@@ -203,8 +206,3 @@ if [[ "$1" == "--run" ]]; then
 else
     while true; do show_menu; done
 fi
-
-EOF
-
-chmod +x "$BACKUP_SCRIPT_PATH"
-bash "$BACKUP_SCRIPT_PATH"
