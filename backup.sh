@@ -1,15 +1,14 @@
 #!/bin/bash
 
 BACKUP_SCRIPT_PATH="/root/backup.sh"
-CRON_MARKER="# marzban_backup_cron_job"
 
-# ذخیره اسکریپت در مسیر /root/backup.sh اگر از curl اجرا شده
+# اگر اسکریپت به صورت مستقیم اجرا نشود (مثلا توسط curl | bash) آن را ذخیره و اجرا کن
 if [[ "$(basename "$0")" != "backup.sh" ]]; then
     echo "Saving script to $BACKUP_SCRIPT_PATH ..."
     curl -Ls https://github.com/amirnewpas/marzban-backup/raw/main/backup.sh -o "$BACKUP_SCRIPT_PATH"
     chmod +x "$BACKUP_SCRIPT_PATH"
-    echo "Script saved. Now you can run it directly: $BACKUP_SCRIPT_PATH"
-    exit 0
+    echo "Script saved. Running the script now..."
+    exec "$BACKUP_SCRIPT_PATH"
 fi
 
 # نمایش نوار پیشرفت درصدی
@@ -29,13 +28,19 @@ function show_progress() {
     echo -ne "\r$progress_bar"
 }
 
-# حذف کرون جاب‌های مربوط به خود اسکریپت (پاک کردن فقط کرون‌های خودش)
-function remove_own_cron_jobs() {
-    echo "Removing backup cron jobs ..."
-    crontab -l 2>/dev/null | grep -v "$CRON_MARKER" | crontab -
+# حذف بات و کرون جاب‌های مرتبط با این اسکریپت
+function remove_bot() {
+    echo "Removing Telegram bot configuration and related cron jobs..."
+    rm -f /root/.telegram_bot_token /root/.telegram_chat_id
+    # فقط کرون‌هایی که شامل نام اسکریپت هستند را حذف کن
+    crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT_PATH" | crontab -
+    echo "Removing backup script file..."
+    rm -f "$BACKUP_SCRIPT_PATH"
+    echo "Bot removed successfully."
+    exit 0
 }
 
-# افزودن یا تغییر کرون جاب ساعت به ساعت دقیق روی دقیقه صفر با فاصله INTERVAL ساعت
+# تنظیم کرون‌جاب دقیق در ساعت رند با فاصله مشخص
 function change_cron_only() {
     echo "Enter backup interval in hours (1-24):"
     read -r INTERVAL
@@ -44,14 +49,26 @@ function change_cron_only() {
         return 1
     fi
 
-    remove_own_cron_jobs
-
     CRON_EXPR="0 */$INTERVAL * * *"
-    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup.log 2>&1 $CRON_MARKER"
+    CRON_CMD="/bin/bash $BACKUP_SCRIPT_PATH --run >> /root/backup.log 2>&1"
 
-    (crontab -l 2>/dev/null; echo "$CRON_EXPR $CRON_CMD") | crontab -
+    # حذف کرون قبلی حاوی اسکریپت و افزودن کرون جدید
+    (crontab -l 2>/dev/null | grep -v -F "$BACKUP_SCRIPT_PATH"; echo "$CRON_EXPR $CRON_CMD") | crontab -
 
     echo "✅ Cron job set to run every $INTERVAL hour(s) at minute 0."
+}
+
+# تنظیم اولیه کرون و توکن بات تلگرام
+function setup_cron() {
+    echo "Enter the Telegram Bot Token:"
+    read -r TELEGRAM_BOT_TOKEN
+    echo "Enter the Telegram Chat ID:"
+    read -r TELEGRAM_CHAT_ID
+
+    echo "$TELEGRAM_BOT_TOKEN" > /root/.telegram_bot_token
+    echo "$TELEGRAM_CHAT_ID" > /root/.telegram_chat_id
+
+    change_cron_only
 }
 
 # استخراج پسورد از فایل env
@@ -71,7 +88,7 @@ function backup_and_send() {
     BASE_DIR="/root/backup"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VAR_DIR="$BASE_DIR/var/lib/marzban"
+    VAR_DIR="$BASE_DIR/varlib"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -119,7 +136,7 @@ function backup_and_send() {
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
-    tar -czf "$FINAL_ARCHIVE" db opt var
+    tar -czf "$FINAL_ARCHIVE" db opt varlib
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
@@ -192,15 +209,15 @@ function show_menu() {
     echo "1) Install / Setup"
     echo "2) Run Backup Now"
     echo "3) Settings"
-    echo "4) Remove backup and cleanup"
+    echo "4) Remove bot and cleanup"
     echo "5) Exit"
     echo "=============================="
     read -rp "Choose an option: " option
     case $option in
-        1) change_cron_only ;;
+        1) setup_cron ;;
         2) run_backup ;;
         3) settings_menu ;;
-        4) remove_own_cron_jobs; rm -f /root/.telegram_bot_token /root/.telegram_chat_id "$BACKUP_SCRIPT_PATH" /root/.marzban_mysql_password; echo "Cleanup done."; exit 0 ;;
+        4) remove_bot ;;
         5) exit 0 ;;
         *) echo "Invalid option." ;;
     esac
