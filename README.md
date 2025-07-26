@@ -1,20 +1,23 @@
 # Marzban Backup Script
 
-**AGPL-3.0 License**
+این اسکریپت برای بکاپ‌گیری از دیتابیس‌ها و فایل‌های مهم سرویس Marzban طراحی شده و بکاپ را به تلگرام ارسال می‌کند.
 
 ---
 
-## 📦 What is this?
+## قابلیت‌ها
 
-This script helps you backup important data from your Marzban, X-UI, or Hiddify panels — including databases and configuration files — and send the backups automatically to Telegram via a Telegram bot. Keep your backups safe and always accessible!
+- بکاپ‌گیری از دیتابیس‌های `marzban` و `marzhelp` داخل داکر  
+- بکاپ‌گیری از فایل‌های مهم در `/opt/marzban` و `/var/lib/marzban`  
+- ارسال بکاپ به تلگرام  
+- تنظیم زمان‌بندی اجرای خودکار بکاپ با کرون (هر یک ساعت یا چند ساعت یک‌بار سر ساعت رند)  
+- مدیریت تنظیمات توکن و چت‌آی‌دی تلگرام از طریق منوی تعاملی  
+- حذف کامل تنظیمات و کرون جاب‌ها با دستور مخصوص  
 
 ---
 
-## ⚙️ How does it work?
+## نصب و اجرا
 
-1. **Run the script**
+برای نصب و اجرای اسکریپت کافی است در سرور دستور زیر را وارد کنید:
 
-   Execute this command on your server:
-
-   ```bash
-   bash <(curl -Ls https://github.com/amirnewpas/marzban-backup/raw/main/backup.sh)
+```bash
+curl -Ls https://github.com/amirnewpas/marzban-backup/raw/main/backup.sh -o /root/backup.sh && chmod +x /root/backup.sh && /root/backup.sh
