@@ -13,6 +13,7 @@ OPT_DIR="$BASE_DIR/opt"
 VARLIB_DIR="$BASE_DIR/varlib"
 CONTAINER_NAME="marzban-mysql-1"
 VARLIB_SOURCE="/var/lib/marzban"
+LAST_BACKUP_FILE="/root/.last_marzban_backup"
 
 function extract_password() {
     if [[ -f "$ENV_FILE" ]]; then
@@ -80,6 +81,7 @@ function backup_and_send() {
         show_progress 100 "✅ Backup sent successfully"
         echo ""
         rm -f "$BASE_DIR/$FINAL_ARCHIVE"
+        date +'%Y-%m-%d %H:%M:%S' > "$LAST_BACKUP_FILE"
     else
         echo -e "\n❌ Failed to send to Telegram."
         echo "Response: $response"
@@ -111,9 +113,10 @@ function run_backup() {
 }
 
 function settings_menu() {
-    echo "\n=== Settings ==="
-    echo "Bot Token: \$(cat /root/.telegram_bot_token 2>/dev/null || echo 'Not set')"
-    echo "Chat ID: \$(cat /root/.telegram_chat_id 2>/dev/null || echo 'Not set')"
+    echo ""
+    echo "=== Settings ==="
+    echo "Bot Token: $(cat /root/.telegram_bot_token 2>/dev/null || echo 'Not set')"
+    echo "Chat ID: $(cat /root/.telegram_chat_id 2>/dev/null || echo 'Not set')"
     echo "Cron jobs:"
     crontab -l | grep "$BACKUP_SCRIPT_PATH" || echo "No cron job found"
     echo "------------------"
@@ -122,10 +125,10 @@ function settings_menu() {
     echo "3) Change Cron Job Interval"
     echo "4) Back"
     read -rp "Choose: " input
-    case \$input in
-        1) echo "Enter new bot token:"; read -r token; echo "\$token" > /root/.telegram_bot_token;;
-        2) echo "Enter new chat ID:"; read -r id; echo "\$id" > /root/.telegram_chat_id;;
-        3) setup_cron;;
+    case $input in
+        1) echo "Enter new bot token:"; read -r token; echo "$token" > /root/.telegram_bot_token ;;
+        2) echo "Enter new chat ID:"; read -r id; echo "$id" > /root/.telegram_chat_id ;;
+        3) setup_cron ;;
         *) ;;
     esac
 }
@@ -135,13 +138,19 @@ function show_menu() {
     echo "=============================="
     echo " Marzban Backup Management Menu"
     echo "=============================="
+    if [[ -f "$LAST_BACKUP_FILE" ]]; then
+        echo "🕒 Last Backup: $(cat $LAST_BACKUP_FILE)"
+    else
+        echo "🕒 Last Backup: Not available"
+    fi
+    echo "=============================="
     echo "1) Install/setup Telegram bot and cron job"
     echo "2) Run backup now and send to Telegram"
     echo "3) Settings"
     echo "4) Exit"
     echo "=============================="
     read -rp "Choose an option: " option
-    case \$option in
+    case $option in
         1) setup_cron ;;
         2) run_backup ;;
         3) settings_menu ;;
@@ -151,7 +160,7 @@ function show_menu() {
     read -rp "Press enter to continue..."
 }
 
-[[ "\$1" == "--run" ]] && run_backup || while true; do show_menu; done
+[[ "$1" == "--run" ]] && run_backup || while true; do show_menu; done
 EOF
 
 chmod +x "$BACKUP_SCRIPT_PATH"
