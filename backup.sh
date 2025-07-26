@@ -141,7 +141,8 @@ function run_backup() {
         return 1
     fi
 
-    bash "$BACKUP_SCRIPT_PATH" --run
+    extract_password
+    backup_and_send
 }
 
 function change_cron() {
@@ -177,44 +178,19 @@ function show_menu() {
     read -r
 }
 
-# اجرای ذخیره اسکریپت بکاپ و اجرای منو
-echo "Saving backup script to $BACKUP_SCRIPT_PATH ..."
-chmod +x "$BACKUP_SCRIPT_PATH"
-echo "Backup script saved and made executable."
+# اگر اسکریپت با --run اجرا شده باشد، بکاپ را انجام بده، در غیر این صورت منو را نشان بده
+if [[ "$1" == "--run" ]]; then
+    run_backup
+else
+    while true; do
+        show_menu
+    done
+fi
 
-while true; do
-    show_menu
-done
 EOF
 
 # اجازه اجرا به اسکریپت بکاپ
 chmod +x "$BACKUP_SCRIPT_PATH"
 
-# اجرای منو
-while true; do
-    show_menu() {
-        clear
-        echo "=============================="
-        echo " Marzban Backup Management Menu"
-        echo "=============================="
-        echo "1) Install/setup Telegram bot and cron job"
-        echo "2) Run backup now and send to Telegram"
-        echo "3) Change cron job interval"
-        echo "4) Exit"
-        echo "=============================="
-        echo -n "Choose an option: "
-        read -r option
-
-        case $option in
-            1) install_bot ;;
-            2) run_backup ;;
-            3) change_cron ;;
-            4) echo "Exiting..."; exit 0 ;;
-            *) echo "Invalid option. Please try again." ;;
-        esac
-        echo "Press enter to continue..."
-        read -r
-    }
-
-    show_menu
-done
+# اجرای اسکریپت بکاپ (که منو را دارد)
+bash "$BACKUP_SCRIPT_PATH"
