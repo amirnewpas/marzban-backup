@@ -183,8 +183,8 @@ function show_menu() {
     fi
     echo "Last backup: $LAST_BACKUP"
     echo "=============================="
-    echo "1) Install/setup Telegram bot and cron job"
-    echo "2) Run backup now and send to Telegram"
+    echo "1) Install"
+    echo "2) Send back up to telegram know"
     echo "3) Settings"
     echo "4) Remove bot and clean up"
     echo "5) Exit"
