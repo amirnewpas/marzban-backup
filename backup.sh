@@ -14,12 +14,22 @@ VARLIB_DIR="$BASE_DIR/varlib"
 CONTAINER_NAME="marzban-mysql-1"
 VARLIB_SOURCE="/var/lib/marzban"
 
-function get_persian_date() {
-    if command -v python3 &> /dev/null; then
-        python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))"
-    else
-        echo "تاریخ شمسی در دسترس نیست"
+# Check and install persiantools if not present
+function ensure_persiantools_installed() {
+    if ! python3 -c "import persiantools" &> /dev/null; then
+        echo "Installing persiantools Python package..."
+        pip3 install persiantools
+        if [ $? -ne 0 ]; then
+            echo "Failed to install persiantools package!"
+            exit 1
+        fi
     fi
+}
+
+# Function to get persian date
+function get_persian_date() {
+    ensure_persiantools_installed
+    python3 -c "from persiantools.jdatetime import JalaliDateTime; print(JalaliDateTime.now().strftime('%Y/%m/%d %H:%M:%S'))"
 }
 
 function extract_password() {
@@ -79,8 +89,10 @@ function backup_and_send() {
     tar -czf "$FINAL_ARCHIVE" db opt varlib
     show_progress 85 "Creating final archive..."; sleep 1
 
+    # Save last backup time
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
 
+    # Prepare message caption with Persian and Gregorian date, GitHub and Telegram links
     PERSIAN_DATE=$(get_persian_date)
     GREGORIAN_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 
