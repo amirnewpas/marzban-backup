@@ -22,7 +22,6 @@ function show_progress() {
 function remove_bot() {
     echo "Removing Telegram bot configuration and cron jobs..."
     rm -f /root/.telegram_bot_token /root/.telegram_chat_id
-    # Remove cron jobs containing this script path
     crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT_PATH" | crontab -
     echo "Removing backup script file..."
     rm -f "$BACKUP_SCRIPT_PATH"
@@ -67,8 +66,7 @@ function backup_and_send() {
     BASE_DIR="/root/backup_marzban"
     DB_DIR="$BASE_DIR/db"
     OPT_DIR="$BASE_DIR/opt"
-    VARLIB_BACKUP_DIR="/var/lib/marzban"
-    TEMP_VARLIB_DIR="$BASE_DIR/varlib_temp"
+    VARLIB_DIR="/var/lib/marzban"
     CONTAINER_NAME="marzban-mysql-1"
 
     MYSQL_ROOT_PASSWORD=$(cat /root/.marzban_mysql_password | tr -d "\r\n ")
@@ -78,7 +76,7 @@ function backup_and_send() {
     TELEGRAM_BOT_TOKEN=$(cat /root/.telegram_bot_token)
     TELEGRAM_CHAT_ID=$(cat /root/.telegram_chat_id)
 
-    mkdir -p "$DB_DIR" "$OPT_DIR" "$TEMP_VARLIB_DIR"
+    mkdir -p "$DB_DIR" "$OPT_DIR"
 
     TOTAL_STEPS=7
     CURRENT_STEP=0
@@ -104,21 +102,20 @@ function backup_and_send() {
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
-    # بکاپ گرفتن از /var/lib/marzban به صورت یک پوشه در TEMP_VARLIB_DIR
-    if [[ -d "$VARLIB_BACKUP_DIR" ]]; then
-        echo "Backing up /var/lib/marzban folder..."
-        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_BACKUP_DIR/" "$TEMP_VARLIB_DIR/"
-        tar -czf "$TEMP_VARLIB_DIR/varlib_backup.tar.gz" -C "$TEMP_VARLIB_DIR" .
-        # پاک کردن فایل‌ها و فولدرهای موقت به جز فایل tar.gz
-        find "$TEMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
-        find "$TEMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
+    if [[ -d "$VARLIB_DIR" ]]; then
+        TMP_VARLIB_DIR="$BASE_DIR/varlib"
+        mkdir -p "$TMP_VARLIB_DIR"
+        rsync -a --exclude="mysql" --exclude="xray-core" "$VARLIB_DIR/" "$TMP_VARLIB_DIR/"
+        tar -czf "$TMP_VARLIB_DIR/varlib_backup.tar.gz" -C "$TMP_VARLIB_DIR" .
+        find "$TMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type f -delete
+        find "$TMP_VARLIB_DIR" ! -name "varlib_backup.tar.gz" -type d -empty -delete
     fi
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     cd "$BASE_DIR" || exit 1
     FINAL_ARCHIVE="marzban_full_backup_$(date +'%Y%m%d_%H%M%S').tar.gz"
     rm -f marzban_full_backup_*.tar.gz
-    tar -czf "$FINAL_ARCHIVE" db opt varlib_temp
+    tar -czf "$FINAL_ARCHIVE" db opt varlib
     CURRENT_STEP=$((CURRENT_STEP+1)); show_progress $CURRENT_STEP $TOTAL_STEPS
 
     echo "$(date +'%Y-%m-%d %H:%M:%S')" > /root/.last_backup_time
@@ -144,9 +141,6 @@ function backup_and_send() {
         echo "Failed to send backup to Telegram."
         echo "Response: $response"
     fi
-
-    # پاک کردن دایرکتوری موقت varlib_temp بعد از ارسال
-    rm -rf "$TEMP_VARLIB_DIR"
 }
 
 function run_backup() {
@@ -210,7 +204,5 @@ function show_menu() {
 if [[ "$1" == "--run" ]]; then
     run_backup
 else
-    while true; do
-        show_menu
-    done
+    while true; do show_menu; done
 fi
